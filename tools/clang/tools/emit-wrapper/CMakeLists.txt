@@ -1,0 +1,29 @@
+set(LLVM_LINK_COMPONENTS
+  Support
+  )
+
+add_clang_executable(emit-wrapper
+  EmitWrapper.cpp
+  )
+
+target_link_libraries(emit-wrapper
+  PRIVATE
+  clangAST
+  clangASTMatchers
+  clangAnalysis
+  clangBasic
+  clangDriver
+  clangEdit
+  clangFrontend
+  clangFrontendTool
+  clangLex
+  clangParse
+  clangSema
+  clangRewrite
+  clangRewriteFrontend
+  clangStaticAnalyzerFrontend
+  clangStaticAnalyzerCheckers
+  clangStaticAnalyzerCore
+  clangIndex
+  clangSerialization
+  )
