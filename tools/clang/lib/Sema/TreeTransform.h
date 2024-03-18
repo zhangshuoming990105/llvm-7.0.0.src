@@ -23,7 +23,6 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
-#include "clang/AST/ExprTensorC.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
@@ -2217,18 +2216,6 @@ public:
                                         SourceLocation RBracketLoc) {
     return getSema().ActOnOMPArraySectionExpr(Base, LBracketLoc, LowerBound,
                                               ColonLoc, Length, RBracketLoc);
-  }
-
-  /// Build a new tensor slice expression.
-  ///
-  /// By default, performs semantic analysis to build the new expression.
-  /// Subclasses may override this routine to provide different behavior.
-  ExprResult RebuildTensorSliceExpr(Expr *Base, SourceLocation LBracketLoc,
-                                    Expr *LowerBound, SourceLocation LColonLoc,
-									Expr *UpperBound, SourceLocation RColonLoc,
-									Expr *Step, SourceLocation RBracketLoc) {
-    return getSema().ActOnTensorSliceExpr(/*Scope=*/nullptr, Base, LBracketLoc, LowerBound, LColonLoc,
-    									  UpperBound, RColonLoc, Step, RBracketLoc);
   }
 
   /// Build a new call expression.
@@ -9302,44 +9289,6 @@ TreeTransform<Derived>::TransformCallExpr(CallExpr *E) {
   return getDerived().RebuildCallExpr(Callee.get(), FakeLParenLoc,
                                       Args,
                                       E->getRParenLoc());
-}
-
-template <typename Derived>
-ExprResult
-TreeTransform<Derived>::TransformTensorSliceExpr(TensorSliceExpr *E) {
-  ExprResult Base = getDerived().TransformExpr(E->getBase());
-  if (Base.isInvalid())
-    return ExprError();
-
-  ExprResult LowerBound;
-  if (E->getLowerBound()) {
-    LowerBound = getDerived().TransformExpr(E->getLowerBound());
-    if (LowerBound.isInvalid())
-      return ExprError();
-  }
-
-  ExprResult UpperBound;
-  if (E->getUpperBound()) {
-	UpperBound = getDerived().TransformExpr(E->getUpperBound());
-    if (UpperBound.isInvalid())
-      return ExprError();
-  }
-
-  ExprResult Step;
-  if (E->getStep()) {
-	Step = getDerived().TransformExpr(E->getStep());
-    if (Step.isInvalid())
-      return ExprError();
-  }
-
-  if (!getDerived().AlwaysRebuild() && Base.get() == E->getBase() &&
-      LowerBound.get() == E->getLowerBound() && UpperBound.get() == E->getUpperBound() &&
-	  Step.get() == E->getStep())
-    return E;
-
-  return getDerived().RebuildTensorSliceExpr(
-      Base.get(), E->getBase()->getLocEnd(), LowerBound.get(), E->getLColonLoc(),
-      UpperBound.get(), E->getRColonLoc(), Step.get(), E->getRBracketLoc());
 }
 
 template<typename Derived>

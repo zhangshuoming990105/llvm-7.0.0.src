@@ -2125,10 +2125,8 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
   if (const auto *FD = dyn_cast<FunctionDecl>(Global)) {
     // Forward declarations are emitted lazily on first use.
     if (!FD->doesThisDeclarationHaveABody()) {
-      if (!FD->doesDeclarationForceExternallyVisibleDefinition()) {
-        if (!getLangOpts().C99TensorC || !FD->getName().endswith("_wrapper"))
-          return;
-      }
+      if (!FD->doesDeclarationForceExternallyVisibleDefinition()) 
+        return;
 
       StringRef MangledName = getMangledName(GD);
 
@@ -5248,20 +5246,4 @@ CodeGenModule::createOpenCLIntToSamplerConversion(const Expr *E,
   return CGF.Builder.CreateCall(CreateRuntimeFunction(FTy,
                                 "__translate_sampler_initializer"),
                                 {C});
-}
-llvm::Constant *CodeGenModule::GetOrCreateFunctionForRecordField(RecordDecl *RD, const FieldDecl *FD) {
-  const CGFunctionInfo &FI = getTypes().arrangeFieldFunctionType(Context.getRecordType(RD), FD->getType());
-  llvm::Type *Ty = getTypes().GetFunctionType(FI);
-  StringRef Fname = FD->getName();
-  SmallString<64> Buffer;
-  if (Fname.startswith("abs") || Fname.startswith("square") || Fname.startswith("exp") ||
-		  Fname.startswith("log") || Fname.startswith("conj")) {
-    Buffer.append("EW");
-    Buffer.append(Fname);
-    Fname = Buffer;
-  }
-  return GetOrCreateLLVMFunction(Fname, Ty, GlobalDecl(), /*ForVTable=*/false, /*DontDefer=*/false);
-}
-llvm::Constant *CodeGenModule::GetOrCreateFunction(llvm::FunctionType *FnTy, StringRef FnName) {
-  return GetOrCreateLLVMFunction(FnName, FnTy, GlobalDecl(), /*ForVTable=*/false);
 }

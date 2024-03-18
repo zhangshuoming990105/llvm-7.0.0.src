@@ -24,7 +24,6 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
-#include "clang/AST/ExprTensorC.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/PartialDiagnostic.h"
@@ -1110,31 +1109,6 @@ static bool unsupportedTypeConversion(const Sema &S, QualType LHSType,
 }
 
 typedef ExprResult PerformCastFn(Sema &S, Expr *operand, QualType toType);
-
-static QualType handleDoubleComplexConversion(Sema &S, ExprResult &Expr) {
-  QualType Ty = Expr.get()->getType();
-  QualType ComplexTy = S.Context.DoubleComplexTy;
-  if (Ty == ComplexTy) return ComplexTy;
-
-  if (Ty->isIntegerType()) {
-    Expr = S.ImpCastExprToType(Expr.get(), S.Context.DoubleTy, CK_IntegralToFloating);
-    Expr = S.ImpCastExprToType(Expr.get(), ComplexTy, CK_FloatingRealToComplex);
-    return ComplexTy;
-  } else if (Ty->isRealFloatingType()) {
-	if (Ty != S.Context.DoubleTy)
-	  Expr = S.ImpCastExprToType(Expr.get(), S.Context.DoubleTy, CK_FloatingCast);
-	Expr = S.ImpCastExprToType(Expr.get(), ComplexTy, CK_FloatingRealToComplex);
-	return ComplexTy;
-  } else if (Ty->isComplexType()) {
-	QualType EleTy = cast<ComplexType>(Ty)->getElementType();
-	if (EleTy->isIntegerType())
-	  Expr = S.ImpCastExprToType(Expr.get(), ComplexTy, CK_IntegralComplexToFloatingComplex);
-	else
-	  Expr = S.ImpCastExprToType(Expr.get(), ComplexTy, CK_FloatingComplexCast);
-	return ComplexTy;
-  }
-  return QualType();
-}
 
 namespace {
 /// These helper callbacks are placed in an anonymous namespace to
@@ -4198,13 +4172,6 @@ Sema::ActOnArraySubscriptExpr(Scope *S, Expr *base, SourceLocation lbLoc,
       base->getType()->isSpecificPlaceholderType(BuiltinType::OMPArraySection))
     return ActOnOMPArraySectionExpr(base, lbLoc, idx, SourceLocation(),
                                     /*Length=*/nullptr, rbLoc);
-  if (getLangOpts().C99TensorC && base && !base->getType().isNull()) {
-    QualType baseTy = base->getType();
-    if (baseTy->isStructureType() && baseTy->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
-      return ActOnTensorSliceExpr(S, base, lbLoc, idx, SourceLocation(),
-    		  	  	  	  	  	  nullptr, SourceLocation(), nullptr, rbLoc);
-    }
-  }
 
   // Since this might be a postfix expression, get rid of ParenListExprs.
   if (isa<ParenListExpr>(base)) {
@@ -4417,116 +4384,6 @@ ExprResult Sema::ActOnOMPArraySectionExpr(Expr *Base, SourceLocation LBLoc,
   return new (Context)
       OMPArraySectionExpr(Base, LowerBound, Length, Context.OMPArraySectionTy,
                           VK_LValue, OK_Ordinary, ColonLoc, RBLoc);
-}
-
-ExprResult
-Sema::ActOnTensorSliceExpr(Scope *S, Expr *Base, SourceLocation LBLoc,
-	  	  	  	  		   Expr *LowerBound, SourceLocation LColonLoc,
-						   Expr *UpperBound, SourceLocation RColonLoc,
-						   Expr *Step, SourceLocation RLoc) {
-  // Since this might be a postfix expression, get rid of ParenListExprs.
-  if (isa<ParenListExpr>(Base)) {
-    ExprResult result = MaybeConvertParenListExprToParenExpr(S, Base);
-    if (result.isInvalid()) return ExprError();
-    Base = result.get();
-  }
-
-  // Handle any non-overload placeholder types in the base and index
-  // expressions.  We can't handle overloads here because the other
-  // operand might be an overloadable type, in which case the overload
-  // resolution for the operator overload should get the first crack
-  // at the overload.
-  if (Base->getType()->isNonOverloadPlaceholderType()) {
-    ExprResult result = CheckPlaceholderExpr(Base);
-    if (result.isInvalid()) return ExprError();
-    Base = result.get();
-  }
-  // Perform default conversions
-  ExprResult result = DefaultFunctionArrayLvalueConversion(Base);
-  if (result.isInvalid()) return ExprError();
-  Base = result.get();
-  QualType BaseTy = Base->getType();
-
-  if (LowerBound) {
-    if (LowerBound->getType()->isNonOverloadPlaceholderType()) {
-      ExprResult result = CheckPlaceholderExpr(LowerBound);
-      if (result.isInvalid()) return ExprError();
-      LowerBound = result.get();
-    }
-    // Perform default conversions
-    ExprResult Result = DefaultFunctionArrayLvalueConversion(LowerBound);
-    if (Result.isInvalid()) return ExprError();
-    LowerBound = Result.get();
-  }
-
-  if (UpperBound) {
-    if (UpperBound->getType()->isNonOverloadPlaceholderType()) {
-      ExprResult result = CheckPlaceholderExpr(UpperBound);
-      if (result.isInvalid()) return ExprError();
-      UpperBound = result.get();
-    }
-    // Perform default conversions
-    ExprResult Result = DefaultFunctionArrayLvalueConversion(UpperBound);
-    if (Result.isInvalid()) return ExprError();
-    UpperBound = Result.get();
-  }
-
-  if (Step) {
-    if (Step->getType()->isNonOverloadPlaceholderType()) {
-      ExprResult result = CheckPlaceholderExpr(Step);
-      if (result.isInvalid()) return ExprError();
-      Step = result.get();
-    }
-    // Perform default conversions
-    ExprResult Result = DefaultFunctionArrayLvalueConversion(Step);
-    if (Result.isInvalid()) return ExprError();
-    Step = Result.get();
-  }
-
-  // Only for tensor
-  if (!BaseTy->isStructureType() || BaseTy->getAs<RecordType>()->getDecl()->getName() != "Tensor")
-    return ExprError(Diag(LBLoc, diag::err_typecheck_subscript_value)
-    		<< Base->getSourceRange() << LowerBound->getSourceRange());
-
-  // C99 6.5.2.1p1
-  if (LowerBound) {
-    if (!LowerBound->getType()->isIntegerType() && !LowerBound->isTypeDependent())
-      return ExprError(Diag(LBLoc, diag::err_typecheck_subscript_not_integer)
-		                     << LowerBound->getSourceRange());
-    if ((LowerBound->getType()->isSpecificBuiltinType(BuiltinType::Char_S) ||
-    	LowerBound->getType()->isSpecificBuiltinType(BuiltinType::Char_U))
-    	&& !LowerBound->isTypeDependent())
-      Diag(LBLoc, diag::warn_subscript_is_char) << LowerBound->getSourceRange();
-  }
-
-  if (UpperBound) {
-    if (!UpperBound->getType()->isIntegerType() && !UpperBound->isTypeDependent())
-      return ExprError(Diag(LBLoc, diag::err_typecheck_subscript_not_integer)
-    		  << UpperBound->getSourceRange());
-    if ((UpperBound->getType()->isSpecificBuiltinType(BuiltinType::Char_S) ||
-    	UpperBound->getType()->isSpecificBuiltinType(BuiltinType::Char_U))
-    	&& !UpperBound->isTypeDependent())
-    	Diag(LBLoc, diag::warn_subscript_is_char) << UpperBound->getSourceRange();
-  }
-
-  if (Step) {
-    if (!Step->getType()->isIntegerType() && !Step->isTypeDependent())
-      return ExprError(Diag(LBLoc, diag::err_typecheck_subscript_not_integer)
-    		  << Step->getSourceRange());
-    if ((Step->getType()->isSpecificBuiltinType(BuiltinType::Char_S) ||
-    	Step->getType()->isSpecificBuiltinType(BuiltinType::Char_U))
-    	&& !Step->isTypeDependent())
-    	Diag(LBLoc, diag::warn_subscript_is_char) << Step->getSourceRange();
-  }
-
-  unsigned Dim = 0;
-  if (TensorSliceExpr *TE = dyn_cast<TensorSliceExpr>(Base->IgnoreParenImpCasts())) {
-	  Dim = TE->getDim();
-	  if (TE->isRangeSlice()) ++Dim;
-  }
-  return new (Context)
-		 TensorSliceExpr(Base, LowerBound, UpperBound, Step, Dim, LColonLoc.isValid(), BaseTy, VK_LValue, OK_Ordinary,
-	    		         LColonLoc, RColonLoc, RLoc);
 }
 
 ExprResult
@@ -8838,25 +8695,6 @@ QualType Sema::CheckMultiplyDivideOperands(ExprResult &LHS, ExprResult &RHS,
   if (LHS.isInvalid() || RHS.isInvalid())
     return QualType();
 
-  // Tensor element-wise operation
-  if (getLangOpts().C99TensorC && !IsCompAssign) {
-    if (!compType.isNull() && compType->isStructureType() &&
-    	compType->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
-      return compType;
-    } else {
-      QualType LHSType = LHS.get()->getType(), RHSType = RHS.get()->getType();
-      if (LHSType->isStructureType() && LHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-    	  RHSType->isArithmeticType()) {
-        handleDoubleComplexConversion(*this, RHS);
-        return LHSType;
-      } else if (RHSType->isStructureType() && RHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-    		     LHSType->isArithmeticType()) {
-    	handleDoubleComplexConversion(*this, LHS);
-    	return RHSType;
-      }
-    }
-  }
-
   if (compType.isNull() || !compType->isArithmeticType())
     return InvalidOperands(Loc, LHS, RHS);
   if (IsDiv)
@@ -9192,28 +9030,6 @@ QualType Sema::CheckAdditionOperands(ExprResult &LHS, ExprResult &RHS,
     return compType;
   }
 
-  // Tensor element-wise operation
-  if (getLangOpts().C99TensorC && Opc == BO_Add) {
-    if (!compType.isNull() && compType->isStructureType() &&
-    	compType->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
-      if (CompLHSTy) *CompLHSTy = compType;
-      return compType;
-    } else {
-      QualType LHSType = LHS.get()->getType(), RHSType = RHS.get()->getType();
-      if (LHSType->isStructureType() && LHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-    	  RHSType->isArithmeticType()) {
-        handleDoubleComplexConversion(*this, RHS);
-        if (CompLHSTy) *CompLHSTy = LHSType;
-        return LHSType;
-      } else if (RHSType->isStructureType() && RHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-				 LHSType->isArithmeticType()) {
-        handleDoubleComplexConversion(*this, LHS);
-        if (CompLHSTy) *CompLHSTy = RHSType;
-        return RHSType;
-      }
-    }
-  }
-
   // Type-checking.  Ultimately the pointer's going to be in PExp;
   // note that we bias towards the LHS being the pointer.
   Expr *PExp = LHS.get(), *IExp = RHS.get();
@@ -9294,28 +9110,6 @@ QualType Sema::CheckSubtractionOperands(ExprResult &LHS, ExprResult &RHS,
   QualType compType = UsualArithmeticConversions(LHS, RHS, CompLHSTy);
   if (LHS.isInvalid() || RHS.isInvalid())
     return QualType();
-
-  // Tensor element-wise operation
-  if (getLangOpts().C99TensorC && !CompLHSTy) { // Not compound assignment operator
-    if (!compType.isNull() && compType->isStructureType() &&
-    	compType->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
-      if (CompLHSTy) *CompLHSTy = compType;
-      return compType;
-    } else {
-      QualType LHSType = LHS.get()->getType(), RHSType = RHS.get()->getType();
-      if (LHSType->isStructureType() && LHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-    	  RHSType->isArithmeticType()) {
-        handleDoubleComplexConversion(*this, RHS);
-        if (CompLHSTy) *CompLHSTy = LHSType;
-        return LHSType;
-      } else if (RHSType->isStructureType() && RHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-				 LHSType->isArithmeticType()) {
-        handleDoubleComplexConversion(*this, LHS);
-        if (CompLHSTy) *CompLHSTy = RHSType;
-        return RHSType;
-      }
-    }
-  }
 
   // Enforce type constraints: C99 6.5.6p3.
 
@@ -10276,25 +10070,6 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
   if ((LHSType->isArithmeticType() || LHSType->isEnumeralType()) &&
       (RHSType->isArithmeticType() || RHSType->isEnumeralType()))
     return checkArithmeticOrEnumeralCompare(*this, LHS, RHS, Loc, Opc);
-
-  // Tensor element-wise operation
-  if (getLangOpts().C99TensorC &&
-	  (LHSType->isStructureType() || RHSType->isStructureType())) {
-    if (LHSType->isStructureType() && LHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-    	RHSType->isStructureType() && RHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
-      return LHSType;
-    } else {
-      if (LHSType->isStructureType() && LHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-    	  RHSType->isArithmeticType()) {
-        handleDoubleComplexConversion(*this, RHS);
-        return LHSType;
-      } else if (RHSType->isStructureType() && RHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
- 				 LHSType->isArithmeticType()) {
-    	handleDoubleComplexConversion(*this, LHS);
-    	return RHSType;
-      }
-    }
-  }
 
   const Expr::NullPointerConstantKind LHSNullKind =
       LHS.get()->isNullPointerConstant(Context, Expr::NPC_ValueDependentIsNull);
@@ -11418,11 +11193,6 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
       } else if (getLangOpts().ObjCAutoRefCount || getLangOpts().ObjCWeak) {
         checkUnsafeExprAssigns(Loc, LHSExpr, RHS.get());
       }
-    } else if (getLangOpts().C99TensorC &&
-    		   LHSType->isStructureType() && LHSType->getAs<RecordType>()->getDecl()->getName() == "Tensor" &&
-			   RHSType->isArithmeticType()) {
-      handleDoubleComplexConversion(*this, RHS);
-      ConvTy = Compatible;
     }
   } else {
     // Compound assignment "x += y"
@@ -12910,10 +12680,6 @@ ExprResult Sema::CreateBuiltinUnaryOp(SourceLocation OpLoc,
     else if (getLangOpts().CPlusPlus && // C++ [expr.unary.op]p6
              Opc == UO_Plus &&
              resultType->isPointerType())
-      break;
-    else if (getLangOpts().C99TensorC &&
-             resultType->isStructureType() &&
-             resultType->getAs<RecordType>()->getDecl()->getName() == "Tensor")
       break;
 
     return ExprError(Diag(OpLoc, diag::err_typecheck_unary_expr)

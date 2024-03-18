@@ -26,7 +26,6 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
-#include "clang/AST/ExprTensorC.h"
 #include "clang/AST/Type.h"
 #include "clang/Basic/ABI.h"
 #include "clang/Basic/CapturedStmt.h"
@@ -3465,7 +3464,6 @@ public:
                                 bool Accessed = false);
   LValue EmitOMPArraySectionExpr(const OMPArraySectionExpr *E,
                                  bool IsLowerBound = true);
-  LValue EmitTensorSliceExpr(const TensorSliceExpr *E);
   LValue EmitExtVectorElementExpr(const ExtVectorElementExpr *E);
   LValue EmitMemberExpr(const MemberExpr *E);
   LValue EmitObjCIsaExpr(const ObjCIsaExpr *E);
@@ -3650,16 +3648,6 @@ public:
                                        const CXXMethodDecl *MD,
                                        ReturnValueSlot ReturnValue);
   RValue EmitCXXPseudoDestructorExpr(const CXXPseudoDestructorExpr *E);
-
-  RValue EmitTensorcMemberFunctionExpr(const CallExpr *E, ReturnValueSlot ReturnValue);
-
-  RValue EmitTensorcBinaryOperator(const BinaryOperator *E, ReturnValueSlot ReturnValue);
-
-  RValue EmitTensorcUnaryOperator(const UnaryOperator *E, ReturnValueSlot ReturnValue);
-
-  RValue EmitTensorcBinAssign(const BinaryOperator *E, ReturnValueSlot ReturnValue);
-
-  RValue EmitTensorcTensorSliceExpr(const TensorSliceExpr *E, ReturnValueSlot ReturnValue);
 
   RValue EmitCUDAKernelCallExpr(const CUDAKernelCallExpr *E,
                                 ReturnValueSlot ReturnValue);
@@ -4145,9 +4133,6 @@ private:
   llvm::Value *emitBuiltinObjectSize(const Expr *E, unsigned Type,
                                      llvm::IntegerType *ResType,
                                      llvm::Value *EmittedE);
-
-  void EmitTensorFree(llvm::Value *Val);
-  void EmitFreeForTmpTensor();
 
 public:
 #ifndef NDEBUG
