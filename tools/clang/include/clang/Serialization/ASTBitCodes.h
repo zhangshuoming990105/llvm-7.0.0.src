@@ -1652,6 +1652,9 @@ namespace serialization {
       /// An ArraySubscriptExpr record.
       EXPR_ARRAY_SUBSCRIPT,
 
+      /// An TensorSliceExpr record.
+      EXPR_TENSOR_SLICE,
+
       /// A CallExpr record.
       EXPR_CALL,
 

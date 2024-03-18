@@ -346,6 +346,7 @@ void CGRecordLowering::lowerUnion() {
 }
 
 void CGRecordLowering::accumulateFields() {
+  bool isTensor = Context.getLangOpts().C99TensorC && D->getName() == "Tensor";
   for (RecordDecl::field_iterator Field = D->field_begin(),
                                   FieldEnd = D->field_end();
     Field != FieldEnd;)
@@ -355,7 +356,8 @@ void CGRecordLowering::accumulateFields() {
       for (++Field; Field != FieldEnd && Field->isBitField(); ++Field);
       accumulateBitFields(Start, Field);
     } else {
-      Members.push_back(MemberInfo(
+      if (!isTensor || !Field->getType()->isFunctionType())
+        Members.push_back(MemberInfo(
         	bitsToCharUnits(getFieldBitOffset(*Field)), MemberInfo::Field,
 			getStorageType(*Field), *Field));
       ++Field;

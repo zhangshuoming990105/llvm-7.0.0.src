@@ -147,6 +147,8 @@ public:
   void VisitBinAssign(const BinaryOperator *E);
   void VisitBinComma(const BinaryOperator *E);
   void VisitBinCmp(const BinaryOperator *E);
+  void VisitUnaryOperator(const UnaryOperator *E);
+  void VisitTensorSliceExpr(const TensorSliceExpr *E);
 
   void VisitObjCMessageExpr(ObjCMessageExpr *E);
   void VisitObjCIvarRefExpr(ObjCIvarRefExpr *E) {
@@ -261,7 +263,7 @@ void AggExprEmitter::withReturnValueSlot(
   if (!UseTemp) {
     RetAddr = Dest.getAddress();
   } else {
-    RetAddr = CGF.CreateMemTemp(RetTy, "tmp", &RetAllocaAddr);
+    RetAddr = CGF.CreateMemTemp(RetTy, "ret.tmp", &RetAllocaAddr);
     uint64_t Size =
         CGF.CGM.getDataLayout().getTypeAllocSize(CGF.ConvertTypeForMem(RetTy));
     LifetimeSizePtr = CGF.EmitLifetimeStart(Size, RetAllocaAddr.getPointer());
@@ -1027,10 +1029,31 @@ void AggExprEmitter::VisitBinCmp(const BinaryOperator *E) {
 }
 
 void AggExprEmitter::VisitBinaryOperator(const BinaryOperator *E) {
-  if (E->getOpcode() == BO_PtrMemD || E->getOpcode() == BO_PtrMemI)
+  if (E->getOpcode() == BO_PtrMemD || E->getOpcode() == BO_PtrMemI) {
     VisitPointerToDataMemberBinaryOperator(E);
-  else
+  } else if (CGF.getLangOpts().C99TensorC &&
+		  (E->getOpcode() >= BO_Mul && E->getOpcode() <= BO_NE) &&
+		  (E->getLHS()->getType()->isStructureType() || E->getRHS()->getType()->isStructureType())) {
+    withReturnValueSlot(E, [&](ReturnValueSlot Slot) {
+      return CGF.EmitTensorcBinaryOperator(E, Slot);
+    });
+  } else {
     CGF.ErrorUnsupported(E, "aggregate binary expression");
+  }
+}
+
+void AggExprEmitter::VisitUnaryOperator(const UnaryOperator *E) {
+  // Emit call instruction for tensor element-wise operations
+  if (CGF.getLangOpts().C99TensorC &&
+		  E->getOpcode() == UO_Minus &&
+		  E->getSubExpr()->getType()->isStructureType() &&
+		  E->getSubExpr()->getType()->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
+    withReturnValueSlot(E, [&](ReturnValueSlot Slot) {
+      return CGF.EmitTensorcUnaryOperator(E, Slot);
+    });
+    return;
+  }
+  CGF.ErrorUnsupported(E, "aggregate unary expression");
 }
 
 void AggExprEmitter::VisitPointerToDataMemberBinaryOperator(
@@ -1141,8 +1164,16 @@ void AggExprEmitter::VisitBinAssign(const BinaryOperator *E) {
     return;
   }
 
-  LValue LHS = CGF.EmitLValue(E->getLHS());
+  if (CGF.getLangOpts().C99TensorC &&
+      E->getLHS()->getType()->isStructureType() &&
+	  E->getLHS()->getType()->getAs<RecordType>()->getDecl()->getName() == "Tensor") {
+    withReturnValueSlot(E, [&](ReturnValueSlot Slot) {
+      return CGF.EmitTensorcBinAssign(E, Slot);
+    });
+    return;
+  }
 
+  LValue LHS = CGF.EmitLValue(E->getLHS());
   // If we have an atomic type, evaluate into the destination and then
   // do an atomic copy.
   if (LHS.getType()->isAtomicType() ||
@@ -1657,6 +1688,12 @@ void AggExprEmitter::VisitDesignatedInitUpdateExpr(DesignatedInitUpdateExpr *E) 
   VisitInitListExpr(E->getUpdater());
 }
 
+void AggExprEmitter::VisitTensorSliceExpr(const TensorSliceExpr *E) {
+  withReturnValueSlot(E, [&](ReturnValueSlot Slot) {
+    return CGF.EmitTensorcTensorSliceExpr(E, Slot);
+  });
+}
+
 //===----------------------------------------------------------------------===//
 //                        Entry Points into this File
 //===----------------------------------------------------------------------===//
@@ -1783,7 +1820,7 @@ void CodeGenFunction::EmitAggExpr(const Expr *E, AggValueSlot Slot) {
 
 LValue CodeGenFunction::EmitAggExprToLValue(const Expr *E) {
   assert(hasAggregateEvaluationKind(E->getType()) && "Invalid argument!");
-  Address Temp = CreateMemTemp(E->getType());
+  Address Temp = CreateMemTemp(E->getType(), "agg.tmp");
   LValue LV = MakeAddrLValue(Temp, E->getType());
   EmitAggExpr(E, AggValueSlot::forLValue(LV, AggValueSlot::IsNotDestructed,
                                          AggValueSlot::DoesNotNeedGCBarriers,

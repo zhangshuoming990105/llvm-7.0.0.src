@@ -832,6 +832,44 @@ CGFunctionInfo *CGFunctionInfo::create(unsigned llvmCC,
   return FI;
 }
 
+const CGFunctionInfo &
+CodeGenTypes::arrangeFunctionDeclaration(CanQualType FTy) {
+  assert(isa<FunctionType>(FTy));
+
+  // When declaring a function without a prototype, always use a
+  // non-variadic type.
+  if (isa<FunctionNoProtoType>(FTy)) {
+    CanQual<FunctionNoProtoType> noProto = FTy.getAs<FunctionNoProtoType>();
+    return arrangeLLVMFunctionInfo(
+        noProto->getReturnType(), /*instanceMethod=*/false,
+        /*chainCall=*/false, None, noProto->getExtInfo(), {}, RequiredArgs::All);
+  }
+
+  assert(isa<FunctionProtoType>(FTy));
+  return arrangeFreeFunctionType(FTy.getAs<FunctionProtoType>(), nullptr);
+}
+
+const CGFunctionInfo &
+CodeGenTypes::arrangeFieldFunctionType(QualType StructType, QualType FieldType) {
+	assert(FieldType->isFunctionType());
+	const FunctionType *FTy = cast<FunctionType>(FieldType.getTypePtr());
+	SmallVector<QualType, 16> ArgTypes;
+	ArgTypes.push_back(Context.getPointerType(StructType));
+	FunctionProtoType::ExtProtoInfo EPI;
+	if (isa<FunctionProtoType>(FTy)) {
+		const FunctionProtoType *ProtoFTy = cast<FunctionProtoType>(FTy);
+		for (unsigned i = 0, n = ProtoFTy->getNumParams(); i < n; ++i) {
+			ArgTypes.push_back(ProtoFTy->getParamType(i));
+		}
+		EPI = ProtoFTy->getExtProtoInfo();
+	}
+
+	FTy = cast<FunctionType>(Context.getFunctionType(FTy->getReturnType(), ArgTypes, EPI).getTypePtr());
+	CanQualType QTy = FTy->getCanonicalTypeUnqualified();
+
+    return arrangeFunctionDeclaration(QTy);
+}
+
 /***/
 
 namespace {
@@ -3840,7 +3878,7 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
     if (!ReturnValue.isNull()) {
       SRetPtr = ReturnValue.getValue();
     } else {
-      SRetPtr = CreateMemTemp(RetTy, "tmp", &SRetAlloca);
+      SRetPtr = CreateMemTemp(RetTy, "sret.tmp", &SRetAlloca);
       if (HaveInsertPoint() && ReturnValue.isUnused()) {
         uint64_t size =
             CGM.getDataLayout().getTypeAllocSize(ConvertTypeForMem(RetTy));

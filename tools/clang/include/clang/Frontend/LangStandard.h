@@ -32,7 +32,8 @@ enum LangFeatures {
   GNUMode = (1 << 10),
   HexFloat = (1 << 11),
   ImplicitInt = (1 << 12),
-  OpenCL = (1 << 13)
+  OpenCL = (1 << 13),
+  C99TensorC = (1 << 14)
 };
 
 }
@@ -89,6 +90,8 @@ public:
   /// isCPlusPlus2a - Language is a post-C++17 variant (or later).
   bool isCPlusPlus2a() const { return Flags & frontend::CPlusPlus2a; }
 
+  /// isC99TensorC - Language is C99 with TensorC extension
+  bool isC99TensorC() const { return Flags & frontend::C99TensorC; }
 
   /// hasDigraphs - Language supports digraphs.
   bool hasDigraphs() const { return Flags & frontend::Digraphs; }

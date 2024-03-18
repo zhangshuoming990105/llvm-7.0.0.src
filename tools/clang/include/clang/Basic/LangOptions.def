@@ -94,6 +94,7 @@ LANGOPT(CPlusPlus17       , 1, 0, "C++17")
 LANGOPT(CPlusPlus2a       , 1, 0, "C++2a")
 LANGOPT(ObjC1             , 1, 0, "Objective-C 1")
 LANGOPT(ObjC2             , 1, 0, "Objective-C 2")
+LANGOPT(C99TensorC        , 1, 0, "C99 with TensorC extension")
 BENIGN_LANGOPT(ObjCDefaultSynthProperties , 1, 0,
                "Objective-C auto-synthesized properties")
 BENIGN_LANGOPT(EncodeExtendedBlockSig , 1, 0,

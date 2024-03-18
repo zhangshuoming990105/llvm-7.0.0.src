@@ -1367,6 +1367,10 @@ public:
     return getFunctionTypeInternal(ResultTy, Args, EPI, false);
   }
 
+  /// Return a function type for a struct field whose type is function type.
+  /// We will add this pointer as the first parameter
+  QualType getFieldFunctionType(QualType StructType, QualType FieldType) const;
+
   QualType adjustStringLiteralBaseType(QualType StrLTy) const;
 
 private:

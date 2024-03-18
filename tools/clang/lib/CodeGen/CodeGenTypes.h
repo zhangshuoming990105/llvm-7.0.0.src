@@ -261,6 +261,7 @@ public:
   /// Free functions are functions that are compatible with an ordinary
   /// C function pointer type.
   const CGFunctionInfo &arrangeFunctionDeclaration(const FunctionDecl *FD);
+  const CGFunctionInfo &arrangeFunctionDeclaration(CanQualType FTy);
   const CGFunctionInfo &arrangeFreeFunctionCall(const CallArgList &Args,
                                                 const FunctionType *Ty,
                                                 bool ChainCall);
@@ -320,6 +321,8 @@ public:
   const CGFunctionInfo &arrangeCXXMethodType(const CXXRecordDecl *RD,
                                              const FunctionProtoType *FTP,
                                              const CXXMethodDecl *MD);
+
+  const CGFunctionInfo &arrangeFieldFunctionType(QualType StructType, QualType FieldType);
 
   /// "Arrange" the LLVM information for a call or type with the given
   /// signature.  This is largely an internal method; other clients

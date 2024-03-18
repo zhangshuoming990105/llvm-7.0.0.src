@@ -6403,6 +6403,10 @@ NamedDecl *Sema::ActOnVariableDeclarator(
     }
   }
 
+  if (getLangOpts().C99TensorC && II->getName() == "Tensor") {
+    Diag(D.getIdentifierLoc(), diag::err_tensor_name) << Name;
+  }
+
   DeclSpec::SCS SCSpec = D.getDeclSpec().getStorageClassSpec();
   StorageClass SC = StorageClassSpecToVarDeclStorageClass(D.getDeclSpec());
 
@@ -15650,6 +15654,8 @@ void Sema::ActOnFields(Scope *S, SourceLocation RecLoc, Decl *EnclosingDecl,
     bool IsLastField = (i + 1 == Fields.end());
     if (FDTy->isFunctionType()) {
       // Field declared as a function.
+      // For TensorC, it's allowed to declare field as a function.
+      if (getLangOpts().C99TensorC && Record && Record->getName() == "Tensor") continue;
       Diag(FD->getLocation(), diag::err_field_declared_as_function)
         << FD->getDeclName();
       FD->setInvalidDecl();

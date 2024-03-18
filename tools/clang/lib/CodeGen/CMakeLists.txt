@@ -56,7 +56,7 @@ add_clang_library(clangCodeGen
   CGExpr.cpp
   CGExprAgg.cpp
   CGExprCXX.cpp
-  # CGExprTensorC.cpp
+  CGExprTensorC.cpp
   CGExprComplex.cpp
   CGExprConstant.cpp
   CGExprScalar.cpp

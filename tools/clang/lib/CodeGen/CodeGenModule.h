@@ -1281,6 +1281,12 @@ public:
   /// \param QT is the clang QualType of the null pointer.
   llvm::Constant *getNullPointer(llvm::PointerType *T, QualType QT);
 
+  /// Get or create declaration for field of record which is function type
+  llvm::Constant *GetOrCreateFunctionForRecordField(RecordDecl *RD, const FieldDecl *FD);
+
+  /// Get or create function for given function type and name
+  llvm::Constant *GetOrCreateFunction(llvm::FunctionType *FnTy, StringRef FnName);
+
 private:
   llvm::Constant *GetOrCreateLLVMFunction(
       StringRef MangledName, llvm::Type *Ty, GlobalDecl D, bool ForVTable,

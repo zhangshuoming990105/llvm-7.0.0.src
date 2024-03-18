@@ -9440,4 +9440,6 @@ def err_std_compare_type_not_supported : Error<
    "member '%2' is missing|"
    "the type is not trivially copyable|"
    "the type does not have the expected form}1">;
+
+def err_tensor_name : Error<"Name of struct/union %0 object has the same name with type Tensor">;
 } // end of sema component.

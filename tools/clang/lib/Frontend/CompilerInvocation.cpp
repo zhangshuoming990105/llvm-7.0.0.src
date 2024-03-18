@@ -1933,6 +1933,7 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   Opts.GNUInline = !Opts.C99 && !Opts.CPlusPlus;
   Opts.HexFloats = Std.hasHexFloats();
   Opts.ImplicitInt = Std.hasImplicitInt();
+  Opts.C99TensorC = Std.isC99TensorC();
 
   // Set OpenCL Version.
   Opts.OpenCL = Std.isOpenCL();

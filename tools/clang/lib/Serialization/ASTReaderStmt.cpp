@@ -676,6 +676,17 @@ void ASTStmtReader::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
   E->setRBracketLoc(ReadSourceLocation());
 }
 
+void ASTStmtReader::VisitTensorSliceExpr(TensorSliceExpr *E) {
+  VisitExpr(E);
+  E->setBase(Record.readSubExpr());
+  E->setLowerBound(Record.readSubExpr());
+  E->setUpperBound(Record.readSubExpr());
+  E->setStep(Record.readSubExpr());
+  E->setLColonLoc(ReadSourceLocation());
+  E->setRColonLoc(ReadSourceLocation());
+  E->setRBracketLoc(ReadSourceLocation());
+}
+
 void ASTStmtReader::VisitCallExpr(CallExpr *E) {
   VisitExpr(E);
   E->setNumArgs(Record.getContext(), Record.readInt());
@@ -3287,6 +3298,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_OMP_ARRAY_SECTION:
       S = new (Context) OMPArraySectionExpr(Empty);
+      break;
+
+    case EXPR_TENSOR_SLICE:
+      S = new (Context) TensorSliceExpr(Empty);
       break;
 
     case EXPR_CALL:

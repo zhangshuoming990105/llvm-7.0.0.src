@@ -10415,3 +10415,18 @@ unsigned char ASTContext::getFixedPointIBits(QualType Ty) const {
       return 0;
   }
 }
+QualType ASTContext::getFieldFunctionType(QualType StructType, QualType FieldType) const {
+  assert(isa<FunctionType>(FieldType));
+
+  SmallVector<QualType, 16> ArgTypes;
+  ArgTypes.push_back(getPointerType(StructType));
+  FunctionProtoType::ExtProtoInfo EPI;
+  const FunctionType *FTy = cast<FunctionType>(FieldType);
+  if (const FunctionProtoType *ProtoFTy = dyn_cast<FunctionProtoType>(FTy)) {
+    for (unsigned i = 0, n = ProtoFTy->getNumParams(); i < n; ++i) {
+      ArgTypes.push_back(ProtoFTy->getParamType(i));
+    }
+    EPI = ProtoFTy->getExtProtoInfo();
+  }
+  return getFunctionType(FTy->getReturnType(), ArgTypes, EPI);
+}

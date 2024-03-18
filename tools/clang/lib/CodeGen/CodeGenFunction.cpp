@@ -37,6 +37,8 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/CallSite.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 using namespace clang;
 using namespace CodeGen;
@@ -301,6 +303,9 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
   bool OnlySimpleReturnStmts = NumSimpleReturnExprs > 0
     && NumSimpleReturnExprs == NumReturnExprs
     && ReturnBlock.getBlock()->use_empty();
+
+  if (getLangOpts().C99TensorC) EmitFreeForTmpTensor();
+
   // Usually the return expression is evaluated before the cleanup
   // code.  If the function contains only a simple return statement,
   // such as a constant, the location before the cleanup code becomes
@@ -2457,4 +2462,112 @@ llvm::DebugLoc CodeGenFunction::SourceLocToDebugLoc(SourceLocation Location) {
     return DI->SourceLocToDebugLoc(Location);
 
   return llvm::DebugLoc();
+}
+static bool IsStructRet(llvm::CallInst *Call, const llvm::Value *Val) {
+  llvm::CallSite cs(Call);
+  llvm::AttributeList Attrs = cs.getAttributes();
+  for (unsigned j = 0, n = Call->getNumArgOperands(); j < n; ++j) {
+    llvm::Value *Arg = Call->getArgOperand(j);
+    if (Arg != Val) continue;
+    if (Attrs.hasAttribute(j+1, llvm::Attribute::AttrKind::StructRet))
+      return true;
+    else
+      return false;
+  }
+  return false;
+}
+static bool IsAccessible(const llvm::Value *Val);
+static bool IsAccessible(llvm::CallInst *Call, const llvm::Value *Val) {
+  llvm::Function *Func = Call->getCalledFunction();
+  if (!Func) return false;
+  StringRef Name = Func->getName();
+  if (Name.endswith("_out")) {
+	if (Call->getArgOperand(2) == Val) {
+	  if (IsAccessible(Call->getArgOperand(0))) return true;
+	}
+  } else if (Name.endswith("_") || Name == "tensor_select" || Name == "tensor_slice" ||
+		     Name.startswith("transpose") || Name.startswith("permute") ||
+		     Name.startswith("ipermute")) {
+	if (Call->getArgOperand(1) == Val) {
+	  if (IsAccessible(Call->getArgOperand(0))) return true;
+	}
+  }
+  return false;
+}
+static bool IsAccessible(const llvm::Value *Val) {
+  static std::map<const llvm::Value *, bool> res;
+  StringRef Name = Val->getName();
+  if (!Name.startswith("agg.tmp") && !Name.startswith("sret.tmp")) return true;
+  if (res.count(Val) != 0) return res[Val];
+  bool Access = false;
+  for (auto it = Val->use_begin(), ie = Val->use_end(); it != ie; ++it) {
+    llvm::CallInst *Call = dyn_cast<llvm::CallInst>(it->getUser());
+    if (!Call) continue;
+    if (IsStructRet(Call, Val)) continue;
+    if (IsAccessible(Call, Val)) {
+    	Access = true;
+    	break;
+    }
+  }
+  res[Val] = Access;
+  return Access;
+}
+static bool AllocTensor(llvm::CallInst *Call, const llvm::Value *Val) {
+  llvm::Function *Func = Call->getCalledFunction();
+  if (!Func) return false;
+  StringRef Name = Func->getName();
+  if (Name.endswith("_out") || Name.endswith("_")) return false;
+  if (Name == "tensor_select" || Name == "tensor_slice") return false;
+  if (Name == "copy" || Name == "copy_scalar") return false;
+  if (Name.startswith("transpose") || Name.startswith("permute") || Name.startswith("ipermute"))
+    return false;
+  return true;
+}
+void CodeGenFunction::EmitTensorFree(llvm::Value *Val) {
+  /// struct ret
+  /// not accessible
+  /// emit free
+  bool Alloc = false, Accessible = false;
+  llvm::CallInst *CreateCall = nullptr;
+  unsigned SRet = 0, ArgUse = 0;
+  for (auto it = Val->use_begin(), ie = Val->use_end(); it != ie; ++it) {
+    llvm::CallInst *Call = dyn_cast<llvm::CallInst>(it->getUser());
+    if (!Call) continue;
+    if (IsStructRet(Call, Val)) {
+      ++SRet;
+      if (AllocTensor(Call, Val)) {
+    	  CreateCall = Call;
+    	  Alloc = true;
+      }
+    } else {
+      ++ArgUse;
+      if (!Accessible && IsAccessible(Call, Val))
+        Accessible = true;
+    }
+  }
+  if (SRet != 1 || ArgUse != 1) return;
+  if (!Alloc || Accessible) return;
+
+  // Emit Free for Val
+  SmallVector<llvm::Type *, 1> ArgTys;
+  ArgTys.push_back(Val->getType());
+  llvm::FunctionType *FnTy = llvm::FunctionType::get(llvm::Type::getVoidTy(getLLVMContext()), ArgTys, false);
+  llvm::Constant *Func = CGM.GetOrCreateFunction(FnTy, "free_tensor");
+  CGBuilderTy::InsertPoint IP = Builder.saveIP();
+  Builder.SetInsertPoint(&(CreateCall->getParent()->back()));
+  Builder.CreateCall(Func, Val);
+  Builder.restoreIP(IP);
+}
+void CodeGenFunction::EmitFreeForTmpTensor() {
+    const llvm::BasicBlock &BB = CurFn->getEntryBlock();
+    for (auto BI = BB.begin(), BE = BB.end(); BI != BE; ++BI) {
+      llvm::Instruction *Inst = const_cast<llvm::Instruction *>(&*BI);
+      llvm::AllocaInst *Alloc = dyn_cast<llvm::AllocaInst>(Inst);
+      if (!Alloc) continue;
+      StringRef Name = Alloc->getName();
+      if (!Name.startswith("agg.tmp") && !Name.startswith("sret.tmp")) continue;
+      llvm::Type *Ty = Alloc->getAllocatedType();
+      if (!Ty->isStructTy() || Ty->getStructName() != "struct.Tensor") continue;
+      EmitTensorFree(Alloc);
+    }
 }

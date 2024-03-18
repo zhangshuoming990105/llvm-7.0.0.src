@@ -24,6 +24,7 @@
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
 #include "clang/AST/ExprOpenMP.h"
+#include "clang/AST/ExprTensorC.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/OpenMPClause.h"
 #include "clang/AST/PrettyPrinter.h"
@@ -1717,6 +1718,24 @@ void StmtPrinter::VisitOMPArraySectionExpr(OMPArraySectionExpr *Node) {
     OS << ":";
     if (Node->getLength())
       PrintExpr(Node->getLength());
+  }
+  OS << "]";
+}
+
+void StmtPrinter::VisitTensorSliceExpr(TensorSliceExpr *Node) {
+  PrintExpr(Node->getBase());
+  OS << "[";
+  if (Node->getLowerBound())
+    PrintExpr(Node->getLowerBound());
+  if (Node->getLColonLoc().isValid()) {
+	OS << ":";
+    if (Node->getUpperBound())
+	  PrintExpr(Node->getUpperBound());
+    if (Node->getRColonLoc().isValid()) {
+	  OS << ":";
+      if (Node->getStep())
+	    PrintExpr(Node->getStep());
+    }
   }
   OS << "]";
 }

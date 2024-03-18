@@ -134,7 +134,7 @@ bool Parser::ExpectAndConsume(tok::TokenKind ExpectedTok, unsigned DiagID,
     return false;
   }
 
-  SourceLocation EndLoc = PP.getLocForEndOfToken(PrevTokLocation);
+  SourceLocation EndLoc = PP.getLocForEndOfToken(PrevTokLocation);llvm::errs() << "EndLoc: ";EndLoc.dump(PP.getSourceManager());llvm::errs() << '\n';
   const char *Spelling = nullptr;
   if (EndLoc.isValid())
     Spelling = tok::getPunctuatorSpelling(ExpectedTok);

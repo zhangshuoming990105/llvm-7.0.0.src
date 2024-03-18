@@ -1290,6 +1290,8 @@ LValue CodeGenFunction::EmitLValue(const Expr *E) {
     return EmitArraySubscriptExpr(cast<ArraySubscriptExpr>(E));
   case Expr::OMPArraySectionExprClass:
     return EmitOMPArraySectionExpr(cast<OMPArraySectionExpr>(E));
+  case Expr::TensorSliceExprClass:
+    return EmitTensorSliceExpr(cast<TensorSliceExpr>(E));
   case Expr::ExtVectorElementExprClass:
     return EmitExtVectorElementExpr(cast<ExtVectorElementExpr>(E));
   case Expr::MemberExprClass:
@@ -3650,6 +3652,10 @@ LValue CodeGenFunction::EmitOMPArraySectionExpr(const OMPArraySectionExpr *E,
   return MakeAddrLValue(EltPtr, ResultExprTy, BaseInfo, TBAAInfo);
 }
 
+LValue CodeGenFunction::EmitTensorSliceExpr(const TensorSliceExpr *E) {
+  return EmitAggExprToLValue(E);
+}
+
 LValue CodeGenFunction::
 EmitExtVectorElementExpr(const ExtVectorElementExpr *E) {
   // Emit the base vector as an l-value.
@@ -4306,6 +4312,13 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
     if (const CXXMethodDecl *MD =
           dyn_cast_or_null<CXXMethodDecl>(CE->getCalleeDecl()))
       return EmitCXXOperatorMemberCallExpr(CE, MD, ReturnValue);
+
+  // std = c99-tensorc
+  // When callee is member of tensor, emit global function call and add address of object as the first argument(this)
+  const MemberExpr *Member = dyn_cast<MemberExpr>(E->getCallee()->IgnoreImpCasts());
+  if (getLangOpts().C99TensorC && Member && Member->getMemberDecl()->getType()->isFunctionType()) {
+    return EmitTensorcMemberFunctionExpr(E, ReturnValue);
+  }
 
   CGCallee callee = EmitCallee(E->getCallee());
 

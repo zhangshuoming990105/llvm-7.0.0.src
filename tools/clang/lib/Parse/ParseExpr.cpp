@@ -1530,8 +1530,8 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       BalancedDelimiterTracker T(*this, tok::l_square);
       T.consumeOpen();
       Loc = T.getOpenLocation();
-      ExprResult Idx, Length;
-      SourceLocation ColonLoc;
+      ExprResult Idx, Length, Stop, Step;
+      SourceLocation ColonLoc, RColonLoc;
       if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
         Diag(Tok, diag::warn_cxx98_compat_generalized_initializer_lists);
         Idx = ParseBraceInitializer();
@@ -1548,6 +1548,36 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
           if (Tok.isNot(tok::r_square))
             Length = ParseExpression();
         }
+      } else if (getLangOpts().C99TensorC) {
+    	// Parse [: or [ expr or [expr : expr or [ expr : expr : expr
+    	if (!Tok.is(tok::colon)) {
+    	  // [ expr
+    	  Idx = ParseExpression();
+    	}
+    	if (Tok.is(tok::colon)) {
+    	  // Consume ':'
+    	  ColonLoc = ConsumeToken();
+    	  // [ expr :  or [ :
+    	  if (Tok.is(tok::colon)) {
+    	    // Consume ':'
+    		RColonLoc = ConsumeToken();
+    		// [ :: or [ expr ::
+    		if (Tok.isNot(tok::r_square)) {
+    		  // [ :: expr  or [ expr :: expr
+    		  Stop = ParseExpression();
+    		}
+    	  } else if (Tok.isNot(tok::r_square)) {
+        	Step = ParseExpression();
+        	// [ expr : expr  or [ : expr
+        	if (Tok.is(tok::colon)) {
+        	  // Consume ':'
+        	  RColonLoc = ConsumeToken();
+        	  // [ expr : expr : or [ : expr :
+        	  if (Tok.isNot(tok::r_square)) // [ expr : expr : expr or [ : expr : expr
+        	    Stop = ParseExpression();
+        	}
+    	  }
+    	}
       } else
         Idx = ParseExpression();
 
@@ -1555,8 +1585,11 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
 
       ExprResult OrigLHS = LHS;
       if (!LHS.isInvalid() && !Idx.isInvalid() && !Length.isInvalid() &&
-          Tok.is(tok::r_square)) {
-        if (ColonLoc.isValid()) {
+    	  !Stop.isInvalid() && !Step.isInvalid() && Tok.is(tok::r_square)) {
+        if (getLangOpts().C99TensorC && ColonLoc.isValid()) {
+          LHS = Actions.ActOnTensorSliceExpr(getCurScope(), LHS.get(), Loc, Idx.get(),
+        		  	  	  	  	  	  	  	 ColonLoc, Stop.get(), RColonLoc, Step.get(), RLoc);
+        } else if (ColonLoc.isValid()) {
           LHS = Actions.ActOnOMPArraySectionExpr(LHS.get(), Loc, Idx.get(),
                                                  ColonLoc, Length.get(), RLoc);
         } else {

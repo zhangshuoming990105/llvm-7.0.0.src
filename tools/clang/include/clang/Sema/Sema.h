@@ -4300,6 +4300,10 @@ public:
   ExprResult ActOnOMPArraySectionExpr(Expr *Base, SourceLocation LBLoc,
                                       Expr *LowerBound, SourceLocation ColonLoc,
                                       Expr *Length, SourceLocation RBLoc);
+  ExprResult ActOnTensorSliceExpr(Scope *S, Expr *Base, SourceLocation LBLoc,
+		  	  	  Expr *LowerBound, SourceLocation LColonLoc,
+				  Expr *UpperBound, SourceLocation RColonLoc,
+				  Expr *Step, SourceLocation RLoc);
 
   // This struct is for use by ActOnMemberAccess to allow
   // BuildMemberReferenceExpr to be able to reinvoke ActOnMemberAccess after

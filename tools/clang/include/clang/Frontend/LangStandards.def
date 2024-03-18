@@ -64,6 +64,10 @@ LANGSTANDARD(gnu99, "gnu99",
              LineComment | C99 | Digraphs | GNUMode | HexFloat)
 LANGSTANDARD_ALIAS_DEPR(gnu99, "gnu9x")
 
+LANGSTANDARD(c99tensorc, "c99-tensorc",
+             C, "ISO C 1999 with TensorC extension",
+             LineComment | C99 | C99TensorC | Digraphs | HexFloat)
+
 // C11 modes
 LANGSTANDARD(c11, "c11",
              C, "ISO C 2011",

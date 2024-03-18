@@ -1093,6 +1093,10 @@ void StmtProfiler::VisitOMPArraySectionExpr(const OMPArraySectionExpr *S) {
   VisitExpr(S);
 }
 
+void StmtProfiler::VisitTensorSliceExpr(const TensorSliceExpr *S) {
+  VisitExpr(S);
+}
+
 void StmtProfiler::VisitCallExpr(const CallExpr *S) {
   VisitExpr(S);
 }
